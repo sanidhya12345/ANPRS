@@ -1,0 +1,43 @@
+<!doctype html>
+<html>
+  <head>
+    <title>Number Plate Data</title>
+    <style>
+      body {
+        font-family: Arial;
+        text-align: center;
+        background: #111;
+        color: white;
+      }
+      .box {
+        margin-top: 80px;
+        padding: 20px;
+        display: inline-block;
+        border: 2px solid lime;
+        border-radius: 12px;
+        font-size: 25px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>🚗 Number Plate Detection Data</h1>
+
+    <div class="box">
+      <p><b>Plate:</b> <span id="plate">Loading...</span></p>
+      <p><b>Color:</b> <span id="color">Loading...</span></p>
+      <p><b>State:</b> <span id="state">Loading...</span></p>
+    </div>
+
+    <script>
+      setInterval(() => {
+        fetch("/plate_info")
+          .then((res) => res.json())
+          .then((data) => {
+            document.getElementById("plate").innerText = data.plate;
+            document.getElementById("color").innerText = data.color;
+            document.getElementById("state").innerText = data.state;
+          });
+      }, 1000);
+    </script>
+  </body>
+</html>
