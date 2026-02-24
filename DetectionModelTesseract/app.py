@@ -135,7 +135,7 @@ while True:
         break
 
     # Resize for speed / consistency
-    frame = cv2.resize(frame, (900, 600))
+    frame = cv2.resize(frame, (640, 420))
 
     plate_text = detect_plate_and_info(frame)
 
