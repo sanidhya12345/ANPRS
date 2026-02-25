@@ -244,6 +244,8 @@ while True:
             state_code=plate_text[0:2]
             if state_code is not None and state_code in indian_states.keys() and len(detected_plate)==10:
                 detected_state_code=indian_states[state_code]
+            else:
+                break
             # print("Detected Plate:", detected_plate)
             # print("Plate Color:",detected_color)
             # print("State:",detected_state_code)
