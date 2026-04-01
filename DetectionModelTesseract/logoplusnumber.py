@@ -17,7 +17,7 @@ client=MongoClient(MONGO_URI)
 db=client['vehicledb']
 collection=db['detectiondata']
 # Tesseract Path (Windows)
-pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
+pytesseract.pytesseract.tesseract_cmd = r"C:\\Program Files\\Tesseract-OCR\\tesseract.exe"
 
 # Download YOLO Brand Model
 model_path = hf_hub_download(
@@ -269,10 +269,11 @@ while True:
         insert_into_db(detected_plate,detected_color,vehicleType,detected_brand)
         break
 
-    #cv2.imshow("Live Feed", frame)
+    cv2.imshow("Live Feed", frame)
     if cv2.waitKey(1) & 0xFF == ord("q"):
         break
 
 
 cap.release()
 cv2.destroyAllWindows()
+

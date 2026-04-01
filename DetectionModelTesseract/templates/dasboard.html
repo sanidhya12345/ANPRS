@@ -1,0 +1,288 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Vehicle Detection Dashboard</title>
+    <link
+      href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css"
+      rel="stylesheet"
+    />
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  </head>
+  <body class="bg-light">
+    <div class="container my-5">
+      <h1 class="mb-4 text-center">Vehicle Detection Dashboard</h1>
+
+      <div class="card shadow-sm mb-4">
+        <div class="card-header bg-danger text-white">🚨 Recent Alerts</div>
+        <ul id="alertsList" class="list-group list-group-flush">
+          {% if alerts %} {% for a in alerts %}
+          <li
+            class="list-group-item d-flex justify-content-between align-items-center"
+          >
+            <span><b>{{ a.number }}</b> - {{ a.reason }}</span>
+          </li>
+          {% endfor %} {% else %}
+          <li class="list-group-item">No alerts yet</li>
+          {% endif %}
+        </ul>
+      </div>
+
+      <div class="card shadow-sm mb-4">
+        <div class="card-body">
+          <h5 class="card-title">Filter Data</h5>
+          <form action="/" method="GET" class="row g-3">
+            <div class="col-md-3">
+              <label class="form-label">Start Date & Time</label>
+              <input type="datetime-local" class="form-control" name="start" />
+            </div>
+            <div class="col-md-3">
+              <label class="form-label">End Date & Time</label>
+              <input type="datetime-local" class="form-control" name="end" />
+            </div>
+            <div class="col-md-2">
+              <label class="form-label">Vehicle Type</label>
+              <select class="form-select" name="vehicleType">
+                <option value="">All</option>
+                <option value="Private">Private</option>
+                <option value="Taxi">Taxi</option>
+                <option value="EV">EV</option>
+              </select>
+            </div>
+            <div class="col-md-2">
+              <label class="form-label">Location</label>
+              <input
+                type="text"
+                class="form-control"
+                name="location"
+                placeholder="e.g. Gate-1"
+              />
+            </div>
+            <div class="col-md-2 d-flex align-items-end">
+              <button type="submit" class="btn btn-primary w-100">
+                Apply Filters
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      <div class="row mb-4">
+        <div class="col-md-4">
+          <div class="card text-bg-primary shadow-sm h-100">
+            <div class="card-body text-center">
+              <h5 class="card-title">Total Vehicles Detected</h5>
+              <h1 id="totalVehicles" class="display-4 fw-bold">{{ total }}</h1>
+            </div>
+          </div>
+        </div>
+
+        <div class="col-md-8">
+          <div class="card shadow-sm h-100">
+            <div class="card-body">
+              <h5 class="card-title">Hourly Activity</h5>
+              <canvas id="hourlyChart" height="100"></canvas>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="row">
+        <div class="col-md-3 mb-4">
+          <div class="card shadow-sm h-100">
+            <div class="card-header bg-dark text-white">
+              Top 5 Number Plates
+            </div>
+            <ul id="topPlatesList" class="list-group list-group-flush">
+              {% for plate, count in top_plates %}
+              <li
+                class="list-group-item d-flex justify-content-between align-items-center"
+              >
+                <span class="fw-bold">{{ plate }}</span>
+                <span class="badge bg-secondary rounded-pill">{{ count }}</span>
+              </li>
+              {% else %}
+              <li class="list-group-item">No plates detected yet.</li>
+              {% endfor %}
+            </ul>
+          </div>
+        </div>
+
+        <div class="col-md-3 mb-4">
+          <div class="card shadow-sm h-100">
+            <div class="card-header bg-info text-white">Vehicle Types</div>
+            <ul id="vehicleTypesList" class="list-group list-group-flush">
+              {% for v_type, count in vehicle_types.items() %}
+              <li
+                class="list-group-item d-flex justify-content-between align-items-center"
+              >
+                {{ v_type }}
+                <span class="badge bg-info rounded-pill">{{ count }}</span>
+              </li>
+              {% endfor %}
+            </ul>
+          </div>
+        </div>
+
+        <div class="col-md-3 mb-4">
+          <div class="card shadow-sm h-100">
+            <div class="card-header bg-success text-white">Detected Colors</div>
+            <ul id="colorsList" class="list-group list-group-flush">
+              {% for color, count in colors.items() %}
+              <li
+                class="list-group-item d-flex justify-content-between align-items-center"
+              >
+                {{ color }}
+                <span class="badge bg-success rounded-pill">{{ count }}</span>
+              </li>
+              {% endfor %}
+            </ul>
+          </div>
+        </div>
+
+        <div class="col-md-3 mb-4">
+          <div class="card shadow-sm h-100">
+            <div class="card-header bg-danger text-white">Detected Brands</div>
+            <ul id="brandsList" class="list-group list-group-flush">
+              {% for brand, count in brands.items() %}
+              <li
+                class="list-group-item d-flex justify-content-between align-items-center"
+              >
+                {{ brand }}
+                <span class="badge bg-danger rounded-pill">{{ count }}</span>
+              </li>
+              {% endfor %}
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div
+      id="alertBox"
+      class="alert alert-danger text-center fixed-top d-none mx-auto mt-3"
+      style="max-width: 600px; z-index: 1050"
+    >
+      🚨 BLACKLISTED VEHICLE DETECTED:
+      <span id="alertText" class="fw-bold"></span>
+    </div>
+    <audio id="alertSound">
+      <source
+        src="https://www.soundjay.com/buttons/beep-01a.mp3"
+        type="audio/mpeg"
+      />
+    </audio>
+
+    <script>
+
+      // 1. Initialize Chart
+      const hourlyData = {{ hourly | dictsort | tojson }};
+      const labels = Object.keys(hourlyData).map(hour => hour + ":00");
+      const data = Object.values(hourlyData);
+
+      const ctx = document.getElementById('hourlyChart').getContext('2d');
+      window.myChart = new Chart(ctx, {
+          type: 'bar',
+          data: {
+              labels: labels,
+              datasets: [{
+                  label: 'Vehicles Detected',
+                  data: data,
+                  backgroundColor: 'rgba(54, 162, 235, 0.5)',
+                  borderColor: 'rgba(54, 162, 235, 1)',
+                  borderWidth: 1
+              }]
+          },
+          options: {
+              responsive: true,
+              scales: {
+                  y: {
+                      beginAtZero: true,
+                      ticks: { precision: 0 }
+                  }
+              }
+          }
+      });
+
+      // 2. Real-time updates logic
+      let lastAlertedVehicle = null;
+
+      setInterval(() => {
+          fetch('/realtime-data')
+          .then(res => res.json())
+          .then(data => {
+
+              // --- Update Total ---
+              document.getElementById('totalVehicles').innerText = data.total;
+
+              // --- Update Recent Alerts List ---
+              const alertsUl = document.getElementById('alertsList');
+              if (data.alerts_list && data.alerts_list.length > 0) {
+                  alertsUl.innerHTML = data.alerts_list.map(a =>
+                      `<li class="list-group-item d-flex justify-content-between align-items-center">
+                          <span><b>${a.number}</b> - ${a.reason}</span>
+                      </li>`
+                  ).join('');
+              } else {
+                  alertsUl.innerHTML = `<li class="list-group-item">No alerts yet</li>`;
+              }
+
+              // --- Update Top Plates ---
+              const platesUl = document.getElementById('topPlatesList');
+              if (data.top_plates && data.top_plates.length > 0) {
+                  platesUl.innerHTML = data.top_plates.map(p =>
+                      `<li class="list-group-item d-flex justify-content-between align-items-center">
+                          <span class="fw-bold">${p[0]}</span>
+                          <span class="badge bg-secondary rounded-pill">${p[1]}</span>
+                      </li>`
+                  ).join('');
+              } else {
+                  platesUl.innerHTML = `<li class="list-group-item">No plates detected yet.</li>`;
+              }
+
+              // --- Update Types ---
+              document.getElementById('vehicleTypesList').innerHTML = Object.entries(data.vehicle_types).map(([k, v]) =>
+                  `<li class="list-group-item d-flex justify-content-between align-items-center">${k}<span class="badge bg-info rounded-pill">${v}</span></li>`
+              ).join('');
+
+              // --- Update Colors ---
+              document.getElementById('colorsList').innerHTML = Object.entries(data.colors).map(([k, v]) =>
+                  `<li class="list-group-item d-flex justify-content-between align-items-center">${k}<span class="badge bg-success rounded-pill">${v}</span></li>`
+              ).join('');
+
+              // --- Update Brands ---
+              document.getElementById('brandsList').innerHTML = Object.entries(data.brands).map(([k, v]) =>
+                  `<li class="list-group-item d-flex justify-content-between align-items-center">${k}<span class="badge bg-danger rounded-pill">${v}</span></li>`
+              ).join('');
+
+              // --- Update Chart ---
+              const newLabels = Object.keys(data.hourly).map(hour => hour + ":00");
+              const newData = Object.values(data.hourly);
+              window.myChart.data.labels = newLabels;
+              window.myChart.data.datasets[0].data = newData;
+              window.myChart.update();
+
+              // --- Handle Alert Popup & Sound ---
+              if (data.alert && data.alert.number !== lastAlertedVehicle) {
+                  const alertBox = document.getElementById('alertBox');
+                  const alertText = document.getElementById('alertText');
+                  const sound = document.getElementById('alertSound');
+
+                  alertText.innerText = data.alert.number + " (" + data.alert.reason + ")";
+                  alertBox.classList.remove('d-none');
+
+                  sound.play().catch(err => console.log("Sound error:", err));
+
+                  lastAlertedVehicle = data.alert.number;
+
+                  setTimeout(() => {
+                      alertBox.classList.add('d-none');
+                  }, 5000);
+              }
+          });
+      }, 5000);
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+  </body>
+</html>
