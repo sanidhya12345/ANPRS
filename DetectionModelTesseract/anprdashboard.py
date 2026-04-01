@@ -43,7 +43,7 @@ def dashboard():
 
     total = len(data)
 
-    # 🔥 FIX: Auto-clear old alerts if database is completely empty
+
     if collection.count_documents({}) == 0:
         alerts_collection.delete_many({})
 
@@ -102,7 +102,6 @@ def realtime_data():
     plates = Counter([d.get("number") for d in data])
     top_plates = plates.most_common(5)
 
-    # 🔥 FIX: ALERTS DUPLICATION & OLD DATA LOGIC
     latest_vehicle = collection.find_one(sort=[("_id", -1)])
     alert = None
 
@@ -113,7 +112,7 @@ def realtime_data():
         if black:
             last_alert = alerts_collection.find_one(sort=[("timestamp", -1)])
             
-            # Sirf tabhi alert generate karo agar ye nayi (new) blacklisted car hai
+            
             if not last_alert or last_alert.get("number") != latest_plate:
                 alert_reason = black.get("reason", "Blacklisted")
                 alerts_collection.insert_one({
@@ -122,7 +121,7 @@ def realtime_data():
                     "timestamp": datetime.now()
                 })
                 alert = {"number": latest_plate, "reason": alert_reason}
-            # Agar purani hi gaadi hai, toh alert = None rahega aur popup nahi aayega
+            
 
     # Fetch latest 5 alerts for the UI list and serialize for JSON
     alerts_list = list(alerts_collection.find().sort("timestamp", -1).limit(5))
