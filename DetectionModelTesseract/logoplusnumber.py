@@ -8,7 +8,6 @@ from ultralytics import YOLO
 from pymongo import MongoClient
 from datetime import datetime
 
-
 # ------------------- CONFIG -------------------
 
 MONGO_URI="mongodb+srv://varshneysanidhya_db_user:IdlnLOhPaoW7XC6r@cluster0.1z1jtnl.mongodb.net/?appName=Cluster0"
@@ -16,10 +15,9 @@ MONGO_URI="mongodb+srv://varshneysanidhya_db_user:IdlnLOhPaoW7XC6r@cluster0.1z1j
 client=MongoClient(MONGO_URI)
 db=client['vehicledb']
 collection=db['detectiondata']
-# Tesseract Path (Windows)
+
 pytesseract.pytesseract.tesseract_cmd = r"C:\\Program Files\\Tesseract-OCR\\tesseract.exe"
 
-# Download YOLO Brand Model
 model_path = hf_hub_download(
     repo_id="haydarkadioglu/brand-eye",
     filename="brandeye.pt"
@@ -27,9 +25,7 @@ model_path = hf_hub_download(
 
 model = YOLO(model_path)
 
-# Use ONE camera stream (change if needed)
 IP_CAM_URL = "http://192.168.29.68:4747/video"
-
 cap = cv2.VideoCapture(IP_CAM_URL)
 
 if not cap.isOpened():
@@ -38,12 +34,16 @@ if not cap.isOpened():
 
 time.sleep(2)
 
-last_plate = ""
+# ------------------- VARIABLES -------------------
+
 detected_brand = None
 detected_plate = None
+detected_color = None
 
+last_insert_time = 0
+cooldown = 5  # seconds
 
-# ------------------- NUMBER PLATE FUNCTION -------------------
+# ------------------- DB INSERT -------------------
 
 def insert_into_db(plate_number, color, vehicle_type, brand):
 
@@ -57,12 +57,13 @@ def insert_into_db(plate_number, color, vehicle_type, brand):
     }
 
     collection.insert_one(vehicle_data)
-    print("Insert detection Successfully")
+    print("✅ Inserted:", plate_number)
+
+# ------------------- COLOR DETECTION -------------------
 
 def detect_plate_color(plate_img):
     hsv = cv2.cvtColor(plate_img, cv2.COLOR_BGR2HSV)
 
-    # Define HSV ranges
     color_ranges = {
         "White":  [(0, 0, 180), (180, 40, 255)],
         "Yellow": [(15, 80, 80), (40, 255, 255)],
@@ -84,6 +85,7 @@ def detect_plate_color(plate_img):
 
     return detected_color
 
+# ------------------- PLATE DETECTION -------------------
 
 def detect_plate_and_info(frame):
     orig = frame.copy()
@@ -100,8 +102,8 @@ def detect_plate_and_info(frame):
 
     for c in cnts:
         rect = cv2.minAreaRect(c)
-        box = cv2.boxPoints(rect)          # float32 from OpenCV
-        box = box.astype(np.intp)          # was np.int0, now explicit int type
+        box = cv2.boxPoints(rect)
+        box = box.astype(np.intp)
 
         w = rect[1][0]
         h = rect[1][1]
@@ -111,22 +113,22 @@ def detect_plate_and_info(frame):
 
         aspect_ratio = max(w, h) / min(w, h)
 
-        # Looser aspect ratio; adjust if needed
         if 1.0 < aspect_ratio < 10.0:
-            # Order points: tl, tr, br, bl
-            src_pts = box.astype("float32")   # keep float32 for transform
+            src_pts = box.astype("float32")
             src_pts = sorted(src_pts, key=lambda x: x[0])
+
             left = src_pts[:2]
             right = src_pts[2:]
+
             left = sorted(left, key=lambda x: x[1])
             right = sorted(right, key=lambda x: x[1])
+
             tl, bl = left
             tr, br = right
 
             width = int(max(w, h))
             height = int(min(w, h))
 
-            # Skip too small regions
             if width < 80 or height < 20:
                 continue
 
@@ -141,28 +143,24 @@ def detect_plate_and_info(frame):
                 np.array([tl, tr, br, bl], dtype="float32"),
                 dst_pts
             )
-            warped = cv2.warpPerspective(orig, M, (width, height))
 
+            warped = cv2.warpPerspective(orig, M, (width, height))
             plate_img = warped
             break
 
     if plate_img is not None:
         plate_color = detect_plate_color(plate_img)
-        print("Detected Plate Color:", plate_color)
+
         plate_gray = cv2.cvtColor(plate_img, cv2.COLOR_BGR2GRAY)
         plate_gray = cv2.bilateralFilter(plate_gray, 11, 17, 17)
 
-        # Try Otsu threshold first (often better for plates)
         _, thresh = cv2.threshold(
             plate_gray, 0, 255,
             cv2.THRESH_BINARY + cv2.THRESH_OTSU
         )
 
-        # Tesseract config: single text line, uppercase letters and digits
         config = "--oem 3 --psm 7 -c tessedit_char_whitelist=ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-
         raw_text = pytesseract.image_to_string(thresh, config=config)
-        print("RAW OCR:", repr(raw_text))
 
         text = "".join([c for c in raw_text if c.isalnum()]).upper()
 
@@ -170,53 +168,22 @@ def detect_plate_and_info(frame):
         cv2.imshow("Plate Thresh", thresh)
 
         if text:
-            return text,plate_color
+            return text, plate_color
 
-    return None,None
+    return None, None
 
+# ------------------- STATES -------------------
+
+indian_states = {
+    "UP": "Uttar Pradesh",
+    "DL": "Delhi",
+    "MH": "Maharashtra",
+    "HR": "Haryana"
+}
 
 # ------------------- MAIN LOOP -------------------
 
-print("Waiting for both Logo and Number Plate detection...\n")
-
-indian_states = {
-    "AP": "Andhra Pradesh",
-    "AR": "Arunachal Pradesh",
-    "AS": "Assam",
-    "BR": "Bihar",
-    "CG": "Chhattisgarh",
-    "GA": "Goa",
-    "GJ": "Gujarat",
-    "HR": "Haryana",
-    "HP": "Himachal Pradesh",
-    "JH": "Jharkhand",
-    "KA": "Karnataka",
-    "KL": "Kerala",
-    "MP": "Madhya Pradesh",
-    "MH": "Maharashtra",
-    "MN": "Manipur",
-    "ML": "Meghalaya",
-    "MZ": "Mizoram",
-    "NL": "Nagaland",
-    "OD": "Odisha",
-    "PB": "Punjab",
-    "RJ": "Rajasthan",
-    "SK": "Sikkim",
-    "TN": "Tamil Nadu",
-    "TS": "Telangana",
-    "TR": "Tripura",
-    "UK": "Uttarakhand",
-    "UP": "Uttar Pradesh",
-    "WB": "West Bengal",
-    "AN": "Andaman and Nicobar Islands",
-    "CH": "Chandigarh",
-    "DN": "Dadra and Nagar Haveli and Daman and Diu",
-    "DL": "Delhi",
-    "JK": "Jammu and Kashmir",
-    "LA": "Ladakh",
-    "LD": "Lakshadweep",
-    "PY": "Puducherry"
-}
+print("🚀 Detection Started...\n")
 
 while True:
     ret, frame = cap.read()
@@ -225,55 +192,63 @@ while True:
 
     frame = cv2.resize(frame, (600, 400))
 
-  #firstly we are detecting the logo of the car
+    # 🔥 Brand detection
     if detected_brand is None:
         results = model(frame, conf=0.3)
         boxes = results[0].boxes
 
         if boxes is not None and len(boxes) > 0:
             detected_brand = model.names[int(boxes[0].cls[0])]
-            print("Detected Brand:", detected_brand)
+            print("Brand:", detected_brand)
 
-    # detecting the number plate of the car
+    # 🔥 Plate detection
     if detected_plate is None:
-        plate_text,plate_color = detect_plate_and_info(frame)
+        plate_text, plate_color = detect_plate_and_info(frame)
 
         if plate_text:
-            detected_plate = plate_text
-            detected_color=plate_color
-            state_code=plate_text[0:2]
-            if state_code is not None and state_code in indian_states.keys() and len(detected_plate)==10:
-                detected_state_code=indian_states[state_code]
+            if len(plate_text) == 10 and plate_text[:2] in indian_states:
+                detected_plate = plate_text
+                detected_color = plate_color
+                print("Plate:", detected_plate, "| Color:", detected_color)
             else:
-                break
-            # print("Detected Plate:", detected_plate)
-            # print("Plate Color:",detected_color)
-            # print("State:",detected_state_code)
-    if detected_brand is not None and detected_plate is not None and detected_color is not None and len(detected_plate)==10:
-        # print("\n BOTH DETECTED SUCCESSFULLY")
+                detected_plate = None
+                continue
 
-        # print("Brand:", detected_brand)
-        # print("Plate:", detected_plate)
-        # print("Color:",detected_color)
-        # print("State:",detected_state_code)
-        vehicleType="Not detected"
-        if detected_color=="White":
-            vehicleType="Private"
-        elif detected_color=="Yellow":
-            vehicleType="Taxi"
-        elif detected_color=="Green":
-            vehicleType="EV"
-        else:
-            vehicleType="Distinguish"
+    # 🔥 Final condition + cooldown
+    current_time = time.time()
 
-        insert_into_db(detected_plate,detected_color,vehicleType,detected_brand)
-        break
+    if (detected_brand and detected_plate and detected_color):
+
+        if current_time - last_insert_time > cooldown:
+
+            vehicleType = "Not detected"
+            if detected_color == "White":
+                vehicleType = "Private"
+            elif detected_color == "Yellow":
+                vehicleType = "Taxi"
+            elif detected_color == "Green":
+                vehicleType = "EV"
+            else:
+                vehicleType = "Other"
+
+            insert_into_db(
+                detected_plate,
+                detected_color,
+                vehicleType,
+                detected_brand
+            )
+
+            last_insert_time = current_time
+
+        # 🔁 RESET for next detection
+        detected_brand = None
+        detected_plate = None
+        detected_color = None
 
     cv2.imshow("Live Feed", frame)
+
     if cv2.waitKey(1) & 0xFF == ord("q"):
         break
 
-
 cap.release()
 cv2.destroyAllWindows()
-

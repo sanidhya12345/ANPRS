@@ -1,9 +1,24 @@
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, render_template, request, jsonify,Response
 from pymongo import MongoClient
 from datetime import datetime
 from collections import Counter
-
+import os
+import cv2
 app = Flask(__name__)
+
+camera = cv2.VideoCapture("http://192.168.29.68:4747/video")
+
+def gen_frames():
+    while True:
+        success, frame = camera.read()
+        if not success:
+            continue
+        else:
+            ret, buffer = cv2.imencode('.jpg', frame)
+            frame = buffer.tobytes()
+
+            yield (b'--frame\r\n'
+                   b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
 
 # ------------------- MONGODB -------------------
 MONGO_URI = "mongodb+srv://varshneysanidhya_db_user:IdlnLOhPaoW7XC6r@cluster0.1z1jtnl.mongodb.net/?appName=Cluster0"
@@ -14,6 +29,7 @@ db = client['vehicledb']
 collection = db['detectiondata']
 blacklist_collection = db['blacklist']
 alerts_collection = db['alerts']
+
 
 
 # ------------------- DASHBOARD -------------------
@@ -42,7 +58,6 @@ def dashboard():
     data = list(collection.find(query))
 
     total = len(data)
-
 
     if collection.count_documents({}) == 0:
         alerts_collection.delete_many({})
@@ -76,6 +91,9 @@ def dashboard():
         alerts=alerts
     )
 
+@app.route('/video_feed')
+def video_feed():
+    return Response(gen_frames(), mimetype='multipart/x-mixed-replace; boundary=frame')
 
 # ------------------- REALTIME API -------------------
 @app.route('/realtime-data')
@@ -83,22 +101,21 @@ def realtime_data():
     data = list(collection.find())
     total = len(data)
 
-    # 🔥 FIX: Sync empty databases. If main data is cleared, wipe old alerts
+    # 🔥 Sync empty databases
     if total == 0:
         alerts_collection.delete_many({})
 
-    # Calculate all stats for the live dashboard update
     vehicle_types = dict(Counter([d.get("vehicleType", "Unknown") for d in data]))
     colors = dict(Counter([d.get("color", "Unknown") for d in data]))
     brands = dict(Counter([d.get("brandName", "Unknown") for d in data]))
-    
+
     hours = []
     for d in data:
         ts = d.get("timestamp")
         if ts:
             hours.append(ts.hour)
     hourly = dict(Counter(hours))
-    
+
     plates = Counter([d.get("number") for d in data])
     top_plates = plates.most_common(5)
 
@@ -111,22 +128,24 @@ def realtime_data():
 
         if black:
             last_alert = alerts_collection.find_one(sort=[("timestamp", -1)])
-            
-            
+
+            # Avoid duplicate alert for same vehicle
             if not last_alert or last_alert.get("number") != latest_plate:
                 alert_reason = black.get("reason", "Blacklisted")
+
                 alerts_collection.insert_one({
                     "number": latest_plate,
                     "reason": alert_reason,
                     "timestamp": datetime.now()
                 })
-                alert = {"number": latest_plate, "reason": alert_reason}
-            
 
-    # Fetch latest 5 alerts for the UI list and serialize for JSON
+                # 🔥 SEND SMS ALERT
+                
+                alert = {"number": latest_plate, "reason": alert_reason}
+
     alerts_list = list(alerts_collection.find().sort("timestamp", -1).limit(5))
     for a in alerts_list:
-        a['_id'] = str(a['_id']) 
+        a['_id'] = str(a['_id'])
         a['timestamp'] = a['timestamp'].isoformat() if 'timestamp' in a else ""
 
     return jsonify({
