@@ -76,7 +76,8 @@ class CameraReader:
     def stop(self):
         self.stopped = True
 
-IP_CAM_URL = "http://192.168.29.68:4747/video"
+IP_CAM_URL = "http://10.211.10.208:4747/video"
+#IP_CAM_URL = "http://10.211.10.126:5000/video_feed"
 print("Connecting to IP Camera...")
 cam_reader = CameraReader(IP_CAM_URL).start()
 time.sleep(2) # Warm up time
